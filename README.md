@@ -1,4 +1,4 @@
-# Anomaly-Detection
+# Real-time Anomaly-Detection
 
 Real-time Anomaly detection in streaming Time series data with alert notification options using Telegram or Email.  
 
