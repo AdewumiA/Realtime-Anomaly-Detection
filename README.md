@@ -21,6 +21,3 @@ The feature importance of the isolation forest was determined based on the metho
 
 The unofficial implementation of the code can be found on [https://github.com/AdewumiA/diffi_df](https://github.com/AdewumiA/diffi_df), which was forked from [https://github.com/britojr/diffi](https://github.com/britojr/diffi). 
 
-## **Method 3: Attention Free Autoencoder**
-
-This method is based on the research work [An Attention Free Conditional Autoencoder For Anomaly Detection in Cryptocurrencies](https://arxiv.org/abs/2304.10614) by Inzirillo and De Villelongue (2023).
