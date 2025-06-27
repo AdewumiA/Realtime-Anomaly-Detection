@@ -6,6 +6,9 @@ import gradio as gr
 import plotly.express as px
 
 from logger import setup_logger
+logger = setup_logger('app')
+logger.info("\n" + "=" * 50 + "\nApplication Started\n" + "=" * 50 + "\n")
+
 from preprocessing import process
 from Predictors import AnomalyModel, dashboard, get_shared_data
 from AlertSystem import Email, Telegram, encryptor, decryptor
@@ -20,9 +23,7 @@ CONFIG = {
     "isolation_forest_path": "Isolation_forest.joblib",
 }
 
-logger = setup_logger('app')
 
-logger.info("\n" + "=" * 50 + "\nApplication Started\n" + "=" * 50 + "\n")
 
 class AnomalyDetector:
     def __init__(self, shared_data, detection_method='distance-threshold'):
