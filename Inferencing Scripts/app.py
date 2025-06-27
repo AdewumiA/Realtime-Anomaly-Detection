@@ -15,7 +15,7 @@ CONFIG = {
     "window_size": 300,
     "sample_size": 40,
     "timer": 1,
-    "symbol": "BTCUSD",
+    "symbol": "Volatility 75 Index",
     "timeframe": mt5.TIMEFRAME_M1,
     "isolation_forest_path": "Isolation_forest.joblib",
 }
