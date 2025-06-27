@@ -2,18 +2,14 @@ import os
 import numpy as np
 import joblib
 import logging
-import dash
 import pandas as pd
 from typing import Dict,List,Tuple
 from multiprocessing import Manager
 
-
+import dash
 import plotly.graph_objects as go
-from dash.dependencies import Input, Output,State
-
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-import tensorflow as tf
-
+from dash import Dash, dcc, html
+from dash.dependencies import Input, Output
 
 # Get logger for this module
 logger = logging.getLogger(__name__)
@@ -27,10 +23,7 @@ def get_shared_data():
 
 
 def rolling_zscore_df(df, window=30):
-    """
-    Apply rolling z-score normalization to all numerical columns in a DataFrame.
-    If window is None, use the entire dataset for mean/std calculation.
-    """
+
     numeric_cols = df.select_dtypes(include=["float64", "int64"]).columns  # Select only numeric columns
     
     if window is None:  # If window is not specified, use the entire dataset
@@ -47,7 +40,6 @@ class AnomalyModel():
     """
     Args:
         isolation_forest_path: Path to trained Isolation Forest model
-        autoencoder_path: Path to trained Autoencoder model
     """
 
     def __init__(self, isolation_forest_path):
@@ -55,18 +47,16 @@ class AnomalyModel():
         self.iso_features = ["close","ATR","BB_Width","RSI","Returns","Hour","DayOfWeek"]
         self.threshold_percentile = 95
         self.isolation_forest_path = isolation_forest_path
-        #self.autoencoder_path = autoencoder_path
 
         self.outliers: Dict[str, List[Tuple[pd.Timestamp, float]]] = {
             'isolation_forest': [],
-            'autoencoder': [],
             'distance-threshold': []
         }
         
 
         try:
             self.isolation_forest = joblib.load(self.isolation_forest_path)
-            #self.autoencoder = tf.keras.models.load_model(self.autoencoder_path)
+            
 
         except FileNotFoundError as e:
             logger.error(f"FileNotFoundError: Could not load model or scaler. Details: {e}")
@@ -109,15 +99,6 @@ class AnomalyModel():
             logger.error(f"Isolation Forest predictor error: {e}", exc_info=True)
             raise
 
-    """
-    def _detect_autoencoder(self, threshold=0.05) -> Dict:
-        pred = self.models['autoencoder'].predict(self.scaled_df[self.iso_features][-1:])
-        mse = np.mean(np.square(self.scaled_df[self.iso_features][-1:] - pred))
-        if mse > threshold:
-            self._record_outlier('autoencoder')
-            return {'status': 'anomaly', 'method': 'autoencoder'}
-        return {'status': 'normal'}
-    """
 
     def _record_outlier(self, time,latest_value,method: str) -> None:
         self.outliers[method].append((
@@ -129,73 +110,105 @@ class AnomalyModel():
         """
         Outliers key can be one of the following:
 
-        1. isolation_forest
-        2. autoencoder
-        3. distance-threshold
+        1. distance-threshold
+        2. isolation_forest
         """
         return self.outliers[method] if method else self.outliers
 
+
 class dashboard():
     def __init__(self, detector, shared_data):
+        self.app_dash = dash.Dash(__name__)
         self.detector = detector
         self.shared_data = shared_data
         self.full_history = pd.DataFrame(columns=['Timestamp', 'close'])
+        self.max_points = 300  
         self.last_update = None
-        self.max_points = 1000
-           
-        self.last_xaxis_range = None   # Store the last known x-axis range
-      
-
-    def update_graph(self, relayout_data=None, n_intervals=0):
+        
+        # Initialize layout
+        self.app_dash.layout = html.Div([
+            html.H1(f"Live Trading - {self.detector.detection_method} Anomalies",
+                   style={'textAlign': 'center'}),
+            dcc.Graph(
+                id="live-graph",
+                config={'displayModeBar': True},
+                style={'height': '80vh'}
+            ),
+            dcc.Interval(
+                id="interval-component",
+                interval=1000,  # 1 second updates
+                n_intervals=0
+            ),
+            html.Div(
+                id="outlier-info",
+                style={
+                    'margin-top': '20px',
+                    'font-size': '1.2em',
+                    'font-weight': 'bold',
+                    'textAlign': 'center'
+                }
+            ),
+            html.Div(
+                id="data-stats",
+                style={
+                    'margin-top': '10px',
+                    'color': '#666',
+                    'textAlign': 'center'
+                }
+            )
+        ])
+        
+        # Register callback
+        self.app_dash.callback(
+            [Output("live-graph", "figure"),
+             Output("outlier-info", "children"),
+             Output("data-stats", "children")],
+            [Input("interval-component", "n_intervals")]
+        )(self.update_graph)
+        
+    def update_graph(self):
         try:
+            # Get current data with thread safety
             ohlc_df = self.shared_data.get("ohlc_df", pd.DataFrame())
             all_outliers = self.shared_data.get("outliers", [])
 
             if ohlc_df.empty:
                 return go.Figure(), "Waiting for initial data...", ""
 
-            ohlc_df["Timestamp"] = pd.to_datetime(ohlc_df["Timestamp"])
+            # Ensure Timestamp is properly formatted
+            ohlc_df['Timestamp'] = pd.to_datetime(ohlc_df['Timestamp'])
 
+            # Update full history while maintaining rolling window
             current_time = pd.Timestamp.now()
             if self.last_update is None or (current_time - self.last_update).seconds >= 1:
                 self.last_update = current_time
-                self.full_history = pd.concat(
-                    [self.full_history, ohlc_df[["Timestamp", "close"]]]
-                ).drop_duplicates("Timestamp", keep="last")
+                self.full_history = pd.concat([self.full_history, ohlc_df[['Timestamp', 'close']]]).drop_duplicates('Timestamp',keep="last")
 
                 if len(self.full_history) > self.max_points:
                     self.full_history = self.full_history.iloc[-self.max_points:]
 
-            # Handle zoom range
-            if relayout_data:
-                self.last_xaxis_range = relayout_data.get("xaxis.range") or [
-                    relayout_data.get("xaxis.range[0]"),
-                    relayout_data.get("xaxis.range[1]"),
-                ]
 
+            # Create figure
             fig = go.Figure()
+
+            # Plot FULL price history
             fig.add_trace(go.Scattergl(
                 x=self.full_history['Timestamp'],
                 y=self.full_history['close'],
                 mode='lines',
                 name='Close Price',
                 line={'color': '#1f77b4', 'width': 1.5},
-                hovertemplate='Close Price at %{x|%H:%M}<br>%{y:.4f}<extra></extra>'
+                hovertemplate='%{x|%H:%M:%S}<br>%{y:.4f}<extra></extra>'
             ))
 
-            if self.last_xaxis_range:
-                fig.update_xaxes(range=self.last_xaxis_range)
+            # Remove duplicates efficiently while maintaining order
+            unique_outliers = list({ts: price for ts, price in all_outliers}.items())
 
-            close_timestamps = set(pd.to_datetime(self.full_history["Timestamp"]))
-            filtered_outliers = []
-            for ts, _ in all_outliers:
-                ts = pd.Timestamp(ts)
-                if ts in close_timestamps:
-                    close_price = self.full_history.loc[
-                        self.full_history["Timestamp"] == ts, "close"
-                    ].values[0]
-                    filtered_outliers.append((ts, close_price))
+            # Ensure anomalies align with close price timestamps
+            close_timestamps = set(self.full_history["Timestamp"])  # Convert close price timestamps to a set
+            filtered_outliers = [(ts, price) for ts, price in unique_outliers if ts in close_timestamps]
 
+            # Plot anomalies
             if filtered_outliers:
                 fig.add_trace(go.Scattergl(
                     x=[ts for ts, _ in filtered_outliers],
@@ -206,40 +219,45 @@ class dashboard():
                     hovertemplate='Anomaly at %{x|%H:%M:%S}<br>Price: %{y:.4f}<extra></extra>'
                 ))
 
+
+            # Apply layout configuration with range selector
             fig.update_layout(
                 title_text=f"{self.detector.detection_method} Anomalies",
                 title_x=0.5,
-                xaxis=dict(
-                    title='Time',
-                    rangeselector=dict(
-                        buttons=[
+                xaxis={
+                    'title': 'Time',
+                    'rangeselector': {
+                        'buttons': [
                             dict(count=1, label="1m", step="minute", stepmode="backward"),
                             dict(count=5, label="5m", step="minute", stepmode="backward"),
                             dict(count=15, label="15m", step="minute", stepmode="backward"),
                             dict(count=1, label="1h", step="hour", stepmode="backward"),
+                            dict(step="all", label="All")
                         ],
-                        bgcolor='rgba(150,200,250,0.4)',
-                        activecolor='Green'
-                    ),
-                    rangeslider=dict(visible=True, thickness=0.1, bgcolor='rgba(150,200,250,0.2)'),
-                    type='date',
-                ),
+                        'bgcolor': 'rgba(150,200,250,0.4)',
+                        'activecolor': 'Green'
+                    },
+                    'rangeslider': {
+                        'visible': True,
+                        'thickness': 0.1,
+                        'bgcolor': 'rgba(150,200,250,0.2)'
+                    },
+                    'type': 'date',
+                },
                 yaxis_title="Price",
                 yaxis_tickformat=".4f",
                 hovermode="x unified",
                 template="plotly_white",
                 margin=dict(l=50, r=30, t=60, b=40),
-                legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center")
+                legend=dict(orientation="h", y=1.02, x=1)
             )
 
             return fig, "", ""
 
         except Exception as e:
-            logger.error(f"Graph generation error: {str(e)}",exc_info = True)
-           
+            logger.error(f"Graph update error: {str(e)}", exc_info=True)
             return go.Figure(), f"Error: {str(e)}", ""
-
-    
+       
     def run(self):
         try:
             logger.info("\n[INFO] Starting dashboard server...")
