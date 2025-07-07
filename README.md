@@ -12,7 +12,7 @@ It was slightly modified to use a rolling window for the timeseries data. The ch
 
 * **Scalable**: the time complexity is linear in the number of data points,
 * **Effective**: it is empirically shown to be the most effective on average among existing distance-based outlier detection methods,
-* **Easy to use**: it requires only one parameter, the number of samples, and a small sample size (the default value is 60), and
+* **Easy to use**: it requires only one parameter, the number of samples, and a small sample size (the default value is 300), and
 * **Rolling window**: It ensures anomaly detection is done on the recently available data in the time series. 
 
 ## **Method 2: Isolation Forest**
