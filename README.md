@@ -8,7 +8,7 @@ This method is based on the research paper by [Sugiyama & Borgwardt (2013)](http
 
 It performs sampling once and measures the outlierness of each data point by the distance from it to the nearest neighbour in the sample set. 
 
-It was slightly modified to use a rolling window for the timeseries data. The choice of window size was based on the research paper. This method has the following advantages:
+It was slightly modified to use a rolling window for the time-series data. The choice of window size was based on the research paper. This method has the following advantages:
 
 * **Scalable**: the time complexity is linear in the number of data points,
 * **Effective**: it is empirically shown to be the most effective on average among existing distance-based outlier detection methods,
@@ -21,3 +21,14 @@ The feature importance of the isolation forest was determined based on the metho
 
 The unofficial implementation of the code can be found on [https://github.com/AdewumiA/diffi_df](https://github.com/AdewumiA/diffi_df), which was forked from [https://github.com/britojr/diffi](https://github.com/britojr/diffi). 
 
+
+## License & Usage
+
+This project is released under a **Modified MIT License**.
+
+- Free to use for **learning**, **personal projects**, or **academic research**.
+- **Production or commercial use is not permitted** without written permission.
+
+Attribution must be retained. To request usage rights or permissions, contact **[aadewumi.d@gmail.com]**.
+
+📄 See [LICENSE](./LICENSE) for full terms.
